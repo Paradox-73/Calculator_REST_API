@@ -1,5 +1,6 @@
 // Declarative CI/CD pipeline for the Calculator REST API.
-// Stages: Checkout -> Build -> Test -> Docker Build -> Push -> Deploy.
+// Stages: Checkout -> Build -> Test -> Docker Build -> Push -> Deploy -> Verify Health.
+// A failed Deploy or Verify Health rolls back to the last green build.
 //
 // CSE 816 Software Production Engineering - Mini-Project
 // Kanav Bhardwaj (IMT2023024)
@@ -10,6 +11,19 @@ def runCmd(String command) {
         sh command
     } else {
         bat command
+    }
+}
+
+/** Redeploys the image of the last green build after a failed deploy. */
+def rollback() {
+    def lastGood = currentBuild.previousSuccessfulBuild?.number
+    if (lastGood == null) {
+        echo 'No earlier successful build exists. Nothing to roll back to.'
+        return
+    }
+    echo "Rolling back to ${IMAGE_NAME}:${lastGood}"
+    withEnv(["IMAGE_NAME=${IMAGE_NAME}", "IMAGE_TAG=${lastGood}", "HOST_PORT=${HOST_PORT}"]) {
+        runCmd 'docker compose up -d --remove-orphans'
     }
 }
 
@@ -24,16 +38,16 @@ pipeline {
     }
 
     environment {
-        // TODO: set DOCKER_NAMESPACE to your real Docker Hub account name.
-        DOCKER_NAMESPACE = 'kanavbhardwaj'
-        IMAGE_REPO       = 'calculator-devops'
+        DOCKER_NAMESPACE = 'paradox73'
+        IMAGE_REPO       = 'calculator-app'
         IMAGE_NAME       = "${DOCKER_NAMESPACE}/${IMAGE_REPO}"
         IMAGE_TAG        = "${env.BUILD_NUMBER}"
         REGISTRY_CREDS   = 'dockerhub-credentials'   // Jenkins credentials ID
-        // TODO: set NOTIFY_EMAIL to the address that must receive the reports.
         NOTIFY_EMAIL     = 'kanav.bhardwaj@iiitb.ac.in'
         // Jenkins itself uses port 8080, so the stack uses port 8081.
         HOST_PORT        = '8081'
+        // Jenkins in a container reaches the host as host.docker.internal.
+        APP_HOST         = "${env.DEPLOY_HOST ?: 'localhost'}"
     }
 
     options {
@@ -55,11 +69,9 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Build #${env.BUILD_NUMBER} of ${env.JOB_NAME}"
-                checkout scm
                 script {
-                    env.GIT_SHORT = (isUnix()
-                            ? sh(script: 'git rev-parse --short HEAD', returnStdout: true)
-                            : bat(script: '@git rev-parse --short HEAD', returnStdout: true)).trim()
+                    def scmVars = checkout scm
+                    env.GIT_SHORT = scmVars.GIT_COMMIT.take(7)
                 }
                 echo "Checked out commit ${env.GIT_SHORT}"
             }
@@ -79,7 +91,7 @@ pipeline {
 
         stage('Test') {
             steps {
-                echo 'Running the JUnit 5 unit tests and the MockMvc integration tests.'
+                echo 'Running the JUnit 5 tests. JaCoCo fails the build below 85% coverage.'
                 runCmd 'mvn -B test'
             }
             post {
@@ -113,7 +125,7 @@ pipeline {
                         if (isUnix()) {
                             sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
                         } else {
-                            bat 'docker login -u %DOCKER_USER% -p %DOCKER_PASS%'
+                            bat 'echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin'
                         }
                     }
                     runCmd "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
@@ -132,10 +144,17 @@ pipeline {
             steps {
                 echo "Deploying ${IMAGE_NAME}:${IMAGE_TAG} with Docker Compose."
                 withEnv(["IMAGE_NAME=${IMAGE_NAME}", "IMAGE_TAG=${IMAGE_TAG}", "HOST_PORT=${HOST_PORT}"]) {
+                    // The proxy image holds nginx.conf, so rebuild it first.
+                    runCmd 'docker compose build nginx'
                     // "up -d" replaces only the changed containers. A re-run
                     // of the same build does not break the running stack.
                     runCmd 'docker compose up -d --remove-orphans'
                     runCmd 'docker compose ps'
+                }
+            }
+            post {
+                failure {
+                    script { rollback() }
                 }
             }
         }
@@ -145,10 +164,22 @@ pipeline {
                 echo 'Waiting for the stack to report a healthy state.'
                 retry(12) {
                     sleep time: 5, unit: 'SECONDS'
-                    runCmd "curl -sf http://localhost:${HOST_PORT}/actuator/health"
+                    runCmd "curl -sf http://${APP_HOST}:${HOST_PORT}/actuator/health"
                 }
-                echo 'Running a smoke test through the Nginx proxy.'
-                runCmd "curl -sf \"http://localhost:${HOST_PORT}/api/v1/add?a=2&b=3\""
+                echo 'Smoke test through the Nginx proxy: 2 + 3 must equal 5.0.'
+                script {
+                    def url = "http://${APP_HOST}:${HOST_PORT}/api/v1/add?a=2&b=3"
+                    if (isUnix()) {
+                        sh "curl -sf '${url}' | grep -q '\"result\":5.0'"
+                    } else {
+                        bat "curl -sf \"${url}\" | findstr /R /C:\"result.:5.0\""
+                    }
+                }
+            }
+            post {
+                failure {
+                    script { rollback() }
+                }
             }
         }
     }
