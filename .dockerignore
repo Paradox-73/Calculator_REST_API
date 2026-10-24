@@ -1,0 +1,32 @@
+# Build output. The image builds the JAR in its own stage.
+target/
+!target/*.jar.keep
+
+# Version control and CI metadata
+.git/
+.gitignore
+.github/
+Jenkinsfile
+
+# IDE and editor files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Docker and deployment files that the image does not need
+docker-compose.yml
+docker-compose.*.yml
+nginx/
+
+# Documentation and reports
+README.md
+docs/
+*.md
+*.pdf
+
+# Local environment files
+.env
+*.log
