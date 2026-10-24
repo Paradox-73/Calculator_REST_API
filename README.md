@@ -532,8 +532,8 @@ A local run confirmed these results:
       `Dockerfile`, and the `docker-compose.yml`.
 - [x] Progressive commit history, four feature/fix branches, four merged pull requests.
 - [x] Public Docker Hub image: <https://hub.docker.com/r/paradox73/calculator-app>.
-- [x] Screenshots in `docs/screenshots/`: green pipeline, test report, `docker ps`,
-      API responses, Docker Hub tags, pull requests, commit history.
-- [ ] Screenshot of the notification email (`docs/screenshots/email.png`).
+- [x] Screenshots in `docs/screenshots/`: green pipeline, test report, email,
+      `docker ps`, API responses, Docker Hub tags, pull requests, commit history.
+- [x] Screenshot of the notification email (`docs/screenshots/email.png`).
 - [x] Report: `docs/report.pdf` (architecture diagram, stages, challenges, screenshots).
 - [ ] The live demo: push a commit and show the automatic deployment.
