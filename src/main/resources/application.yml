@@ -13,7 +13,8 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      # Only the UP/DOWN status is public. Disk and other details stay hidden.
+      show-details: when-authorized
       probes:
         enabled: true
   info:
