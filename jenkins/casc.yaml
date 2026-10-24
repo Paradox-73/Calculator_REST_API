@@ -62,6 +62,14 @@ jobs:
         description('Build, test, containerise, push and deploy the Calculator REST API.')
         properties {
           githubProjectUrl('https://github.com/Paradox-73/Calculator_REST_API')
+          // Same triggers as the Jenkinsfile. This file re-creates the job on
+          // every Jenkins start, so the triggers must also be declared here.
+          pipelineTriggers {
+            triggers {
+              githubPush()
+              pollSCM { scmpoll_spec('H/5 * * * *') }
+            }
+          }
         }
         definition {
           cpsScm {
