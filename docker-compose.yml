@@ -1,9 +1,7 @@
 name: calculator-devops
 
-services:
-
-  # The Spring Boot API. Compose starts two replicas of it.
-  calculator:
+# Settings shared by both API replicas.
+x-calculator: &calculator
     image: ${IMAGE_NAME:-paradox73/calculator-app}:${IMAGE_TAG:-latest}
     build:
       context: .
@@ -21,14 +19,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+      start_interval: 2s
     restart: unless-stopped
     deploy:
-      replicas: 2
       resources:
         limits:
           memory: 512M
     networks:
       - calc-net
+
+services:
+
+  # Two replicas of the Spring Boot API. They are two services rather than
+  # "replicas: 2" so the pipeline can replace them one at a time, and the
+  # proxy always has one healthy replica (a rolling update).
+  calculator-a: *calculator
+  calculator-b: *calculator
 
   # The reverse proxy. It is the only entry point from the host.
   nginx:
@@ -40,10 +46,12 @@ services:
       # The stack therefore uses port 8081.
       - "${HOST_PORT:-8081}:80"
     depends_on:
-      calculator:
+      calculator-a:
+        condition: service_healthy
+      calculator-b:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/nginx-health"]
       interval: 15s
       timeout: 5s
       retries: 5
