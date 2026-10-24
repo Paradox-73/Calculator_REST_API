@@ -1,0 +1,32 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: ${APP_NAME:calculator-api}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Calculator REST API
+    description: CSE 816 Software Production Engineering mini-project
+    version: 1.0.0
+
+logging:
+  level:
+    root: INFO
+    com.spe.calculator: INFO
