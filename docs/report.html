@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Calculator CI/CD Report</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  body { font: 10.2pt/1.42 "Segoe UI", Arial, sans-serif; color: #1b1f24; margin: 0; }
+  h1 { font-size: 17pt; margin: 0 0 2px; }
+  h2 { font-size: 12.5pt; margin: 14px 0 5px; border-bottom: 1.5px solid #2f6feb; padding-bottom: 2px; }
+  h3 { font-size: 10.5pt; margin: 9px 0 3px; }
+  p { margin: 4px 0; }
+  .meta { color: #555; font-size: 9.5pt; margin-bottom: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 9pt; margin: 5px 0; }
+  th, td { border: 1px solid #c9d1d9; padding: 3px 6px; text-align: left; vertical-align: top; }
+  th { background: #eef3fb; }
+  code { font: 8.8pt Consolas, monospace; background: #f3f4f6; padding: 0 3px; border-radius: 3px; }
+  ul { margin: 3px 0 3px 18px; padding: 0; }
+  li { margin: 1px 0; }
+  .links td:first-child { width: 120px; font-weight: 600; }
+  .shot { page-break-inside: avoid; margin: 8px 0 14px; }
+  .shot img { width: 100%; border: 1px solid #c9d1d9; }
+  .shot p { font-size: 9pt; color: #444; }
+  .pb { page-break-before: always; }
+  svg text { font-family: "Segoe UI", Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>End-to-End CI/CD Pipeline for a Calculator REST API</h1>
+<div class="meta">CSE 816 Software Production Engineering, Mini-Project &middot; Kanav Bhardwaj (IMT2023024) &middot; Term I, 2026-27 &middot; Faculty: Prof. B. Thangaraju</div>
+
+<table class="links">
+  <tr><td>GitHub</td><td><a href="https://github.com/Paradox-73/Calculator_REST_API">github.com/Paradox-73/Calculator_REST_API</a></td></tr>
+  <tr><td>Docker Hub</td><td><a href="https://hub.docker.com/r/paradox73/calculator-app">hub.docker.com/r/paradox73/calculator-app</a> (public; one tag per build number, plus <code>latest</code>)</td></tr>
+  <tr><td>Stack</td><td>Java 21, Spring Boot 3.5.16, Maven 3.9, JUnit 5 + MockMvc + JaCoCo, Docker, Docker Compose, Nginx 1.27, Jenkins LTS</td></tr>
+</table>
+
+<h2>1. Architecture of the pipeline</h2>
+<svg viewBox="0 0 720 300" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#444"/></marker></defs>
+  <g font-size="11">
+    <rect x="8" y="22" width="92" height="44" rx="6" fill="#fff" stroke="#444"/>
+    <text x="54" y="41" text-anchor="middle" font-weight="600">Developer</text>
+    <text x="54" y="56" text-anchor="middle" font-size="9.5">git push / merge PR</text>
+    <line x1="100" y1="44" x2="140" y2="44" stroke="#444" marker-end="url(#a)"/>
+
+    <rect x="142" y="22" width="96" height="44" rx="6" fill="#f6f8fa" stroke="#444"/>
+    <text x="190" y="41" text-anchor="middle" font-weight="600">GitHub</text>
+    <text x="190" y="56" text-anchor="middle" font-size="9.5">main branch</text>
+    <line x1="238" y1="44" x2="282" y2="44" stroke="#444" marker-end="url(#a)"/>
+    <text x="260" y="36" text-anchor="middle" font-size="8.5">webhook</text>
+    <text x="260" y="60" text-anchor="middle" font-size="8.5">(tunnel)</text>
+
+    <rect x="284" y="8" width="428" height="128" rx="8" fill="#eef3fb" stroke="#2f6feb"/>
+    <text x="294" y="25" font-weight="600">Jenkins (container, configured as code)  &#8212;  declarative Jenkinsfile</text>
+    <g font-size="9.5">
+      <rect x="294" y="36" width="56" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="322" y="58" text-anchor="middle">Checkout</text>
+      <rect x="354" y="36" width="50" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="379" y="52" text-anchor="middle">Build</text><text x="379" y="64" text-anchor="middle" font-size="8">mvn package</text>
+      <rect x="408" y="36" width="50" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="433" y="52" text-anchor="middle">Test</text><text x="433" y="64" text-anchor="middle" font-size="8">38 + JaCoCo</text>
+      <rect x="462" y="36" width="56" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="490" y="52" text-anchor="middle">Docker</text><text x="490" y="64" text-anchor="middle">Build</text>
+      <rect x="522" y="36" width="44" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="544" y="58" text-anchor="middle">Push</text>
+      <rect x="570" y="36" width="54" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="597" y="52" text-anchor="middle">Deploy</text><text x="597" y="64" text-anchor="middle" font-size="8">rolling</text>
+      <rect x="628" y="36" width="76" height="36" rx="4" fill="#fff" stroke="#2f6feb"/><text x="666" y="52" text-anchor="middle">Verify</text><text x="666" y="64" text-anchor="middle">Health</text>
+    </g>
+    <text x="294" y="92" font-size="9.5">Fails fast: a red stage skips every later stage. Deploy / Verify failure &#8594; rollback to last green tag.</text>
+    <text x="294" y="108" font-size="9.5">Credentials from the Jenkins store, masked. Email on success / failure / unstable.</text>
+    <text x="294" y="124" font-size="9.5">Runs docker through the host's Docker socket.</text>
+
+    <line x1="544" y1="136" x2="544" y2="176" stroke="#444" marker-end="url(#a)"/>
+    <rect x="470" y="178" width="148" height="40" rx="6" fill="#f6f8fa" stroke="#444"/>
+    <text x="544" y="195" text-anchor="middle" font-weight="600">Docker Hub</text>
+    <text x="544" y="209" text-anchor="middle" font-size="9">paradox73/calculator-app:N, :latest</text>
+
+    <line x1="400" y1="136" x2="400" y2="176" stroke="#444" marker-end="url(#a)"/>
+    <text x="406" y="160" font-size="8.5">docker compose up -d --wait</text>
+    <rect x="8" y="178" width="444" height="114" rx="8" fill="#f2fbf4" stroke="#1a7f37"/>
+    <text x="18" y="195" font-weight="600">Docker Compose stack (network calc-net)</text>
+    <rect x="18" y="214" width="104" height="44" rx="5" fill="#fff" stroke="#1a7f37"/>
+    <text x="70" y="232" text-anchor="middle" font-weight="600">Nginx</text>
+    <text x="70" y="247" text-anchor="middle" font-size="9">host :8081 &#8594; :80</text>
+    <line x1="122" y1="230" x2="196" y2="214" stroke="#444" marker-end="url(#a)"/>
+    <line x1="122" y1="242" x2="196" y2="262" stroke="#444" marker-end="url(#a)"/>
+    <text x="134" y="242" font-size="8.5">upstream</text>
+    <rect x="198" y="198" width="140" height="34" rx="5" fill="#fff" stroke="#1a7f37"/>
+    <text x="268" y="213" text-anchor="middle">calculator-a</text><text x="268" y="226" text-anchor="middle" font-size="8.5">Spring Boot :8080 (healthy)</text>
+    <rect x="198" y="246" width="140" height="34" rx="5" fill="#fff" stroke="#1a7f37"/>
+    <text x="268" y="261" text-anchor="middle">calculator-b</text><text x="268" y="274" text-anchor="middle" font-size="8.5">Spring Boot :8080 (healthy)</text>
+    <text x="348" y="230" font-size="8.5">health check:</text>
+    <text x="348" y="242" font-size="8.5">/actuator/health</text>
+    <text x="348" y="254" font-size="8.5">restart:</text>
+    <text x="348" y="266" font-size="8.5">unless-stopped</text>
+    <text x="18" y="286" font-size="8.5">Client &#8594; http://localhost:8081/api/v1/add?a=2&amp;b=3 &#8594; Nginx &#8594; either replica</text>
+  </g>
+</svg>
+
+<h2>2. The application</h2>
+<p>A Spring Boot REST API with <code>GET /api/v1/{add,subtract,multiply,divide}?a=&amp;b=</code> and Actuator's <code>/actuator/health</code>. Success returns <code>{"operation":"add","a":2.0,"b":3.0,"result":5.0}</code>. A missing or non-numeric parameter, <code>NaN</code>/<code>Infinity</code>, an overflowing result, and division by zero all return HTTP 400 with a structured body (timestamp, status, error, message, path) from one <code>@RestControllerAdvice</code>. Arithmetic lives in <code>CalculatorService</code>, apart from the HTTP layer.</p>
+<p><b>Tests (38, all passing):</b> 29 plain JUnit 5 unit tests of the service (5 cases per operation, divide by zero and negative zero, non-finite inputs, overflow); 7 MockMvc tests of the web layer (every operation and every error path); 2 tests on a real embedded server (health is <code>UP</code>, <code>add</code> returns 5.0). Surefire writes JUnit XML for Jenkins. JaCoCo measures 90% instruction and 100% branch coverage and fails the build below 85%.</p>
+
+<h2>3. Pipeline stages</h2>
+<table>
+  <tr><th style="width:92px">Stage</th><th>What it does</th><th style="width:150px">Fails when</th></tr>
+  <tr><td>Trigger</td><td>GitHub webhook (<code>githubPush()</code>) through a Cloudflare tunnel to the local Jenkins; <code>pollSCM('H/5 * * * *')</code> as a fallback. A merged PR starts a build within about 10 s.</td><td>&#8212;</td></tr>
+  <tr><td>Checkout</td><td><code>checkout scm</code>; keeps the short commit hash for the email.</td><td>GitHub unreachable</td></tr>
+  <tr><td>Build</td><td><code>mvn -B clean package -DskipTests</code>; archives the JAR.</td><td>Compile error</td></tr>
+  <tr><td>Test</td><td><code>mvn -B test</code>; <code>junit</code> publishes <code>target/surefire-reports/*.xml</code> (<code>allowEmptyResults: false</code>); JaCoCo report archived.</td><td>A failing test, zero test reports, coverage &lt; 85%</td></tr>
+  <tr><td>Docker Build</td><td><code>docker build</code> of the multi-stage Dockerfile, tagged <code>:BUILD_NUMBER</code> and <code>:latest</code>; prints the image size.</td><td>Dockerfile error</td></tr>
+  <tr><td>Push</td><td><code>withCredentials</code> reads <code>dockerhub-credentials</code> from the Jenkins store; <code>docker login --password-stdin</code>; pushes both tags; <code>docker logout</code> in <code>post</code>.</td><td>Bad token, network</td></tr>
+  <tr><td>Deploy</td><td>Rolling update: <code>docker compose up -d --wait calculator-a</code>, 10 s pause, same for <code>calculator-b</code>, then Nginx. One replica always serves traffic.</td><td>Container not healthy</td></tr>
+  <tr><td>Verify Health</td><td>Polls <code>/actuator/health</code> through Nginx (12 &times; 5 s), then checks that <code>add?a=2&amp;b=3</code> returns <code>"result":5.0</code>.</td><td>Stack not healthy or wrong answer</td></tr>
+  <tr><td>post</td><td>Success / failure / unstable emails (failure attaches the log and names the stage); <code>docker image prune</code>. A Deploy or Verify failure redeploys the last green build.</td><td>&#8212;</td></tr>
+</table>
+<p><b>Re-runnable and idempotent:</b> <code>disableConcurrentBuilds()</code> allows one deploy at a time; <code>compose up</code> only replaces containers whose image changed. Measured: during a redeploy (build 5) 146 of 146 requests to the API succeeded. A deliberately broken replay (build 6) deployed tag 6, failed the smoke test, and was rolled back to tag 5 automatically.</p>
+
+<h3>Containerization</h3>
+<ul>
+  <li><b>Dockerfile:</b> stage 1 <code>maven:3.9-eclipse-temurin-21</code> copies <code>pom.xml</code> and runs <code>dependency:go-offline</code> before copying <code>src</code> (dependency layer cached); stage 2 <code>eclipse-temurin:21-jre-alpine</code> copies only the JAR, runs as non-root user <code>spring</code>, <code>EXPOSE 8080</code>, <code>HEALTHCHECK</code>, <code>exec java</code> so the JVM gets SIGTERM, heap sized to the container (<code>MaxRAMPercentage=75</code>). Base images pinned by <code>sha256</code> digest. <code>.dockerignore</code> keeps <code>target/</code>, <code>.git/</code>, docs and <code>.env</code> out. Image: 95 MB (<code>docker image inspect</code>). Runs alone with <code>docker run -p 9090:8080 paradox73/calculator-app</code>.</li>
+  <li><b>docker-compose.yml:</b> network <code>calc-net</code>; two API services from one YAML anchor (health check on <code>/actuator/health</code>, <code>restart: unless-stopped</code>, environment variables, 512 MB limit); Nginx reverse proxy as the only host port (8081), started only when both replicas are healthy. One <code>docker compose up</code> starts the full stack.</li>
+</ul>
+
+<h3>Version control</h3>
+<p>Progressive commits on <code>main</code> (skeleton &#8594; service &#8594; tests &#8594; controller &#8594; Docker &#8594; Compose &#8594; Jenkinsfile &#8594; README), then four feature/fix branches merged through pull requests #1&#8211;#4 with merge commits. <code>.gitignore</code> excludes <code>target/</code>, IDE files and every secret file; Jenkins secrets live only in the gitignored <code>jenkins/.env</code>.</p>
+
+<h2>4. Challenges faced</h2>
+<table>
+  <tr><th style="width:170px">Problem</th><th>Cause and fix</th></tr>
+  <tr><td>Redeploy dropped requests (8 of 48 failed)</td><td><code>compose up</code> recreated both replicas at once. Fix: two services and a rolling update. A first attempt still failed about 40% of requests: the new replica was healthy in 4 s, before Nginx had re-resolved its address, so both were unreachable together. Fix: 1 s DNS refresh, 1 s connect timeout, 10 s pause between replicas. Result: 0 failures.</td></tr>
+  <tr><td>Nginx health check never passed</td><td><code>localhost</code> in Alpine resolves to IPv6 <code>::1</code>; Nginx listens on IPv4 only. Fix: probe <code>127.0.0.1</code>.</td></tr>
+  <tr><td>Push reached Jenkins but no build started</td><td>Configuration as Code re-creates the job on every Jenkins start, wiping the triggers the first run registers. Fix: declare <code>githubPush()</code> and <code>pollSCM</code> in the job definition too (PR #3).</td></tr>
+  <tr><td>Jenkins in a container</td><td>Bind-mounted <code>nginx.conf</code> resolves on the host, not in the Jenkins workspace &#8594; config baked into an Nginx image. <code>localhost</code> in Jenkins is the Jenkins container &#8594; Verify Health uses <code>host.docker.internal</code>.</td></tr>
+  <tr><td>Webhook needs a public URL</td><td>Jenkins runs on a laptop. A Cloudflare quick tunnel gives it an HTTPS address; <code>jenkins/update-webhook.sh</code> repoints the GitHub webhook after each restart. Polling remains as fallback.</td></tr>
+  <tr><td>Failure email crashed</td><td><code>attachLog</code> in email-ext needs the <code>matrix-project</code> plugin; added to <code>plugins.txt</code>.</td></tr>
+</table>
+
+<div class="pb"></div>
+<h2>Appendix: screenshots</h2>
+<!--SHOTS-->
+
+</body>
+</html>
