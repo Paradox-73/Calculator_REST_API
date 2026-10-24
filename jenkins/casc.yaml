@@ -1,0 +1,77 @@
+# Jenkins Configuration as Code. Secrets come from jenkins/.env, never from git.
+jenkins:
+  systemMessage: "CSE 816 - Calculator REST API CI/CD"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          # The deployed stack runs on the host, not inside this container.
+          - key: DEPLOY_HOST
+            value: host.docker.internal
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: dockerhub-credentials
+              description: Docker Hub access token
+              username: "${DOCKERHUB_USER}"
+              password: "${DOCKERHUB_TOKEN}"
+
+tool:
+  jdk:
+    installations:
+      - name: JDK21
+        home: /opt/java/openjdk
+  maven:
+    installations:
+      - name: Maven3
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.11"
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+    adminAddress: "${SMTP_USER}"
+  email-ext:
+    mailAccount:
+      smtpHost: smtp.gmail.com
+      smtpPort: "465"
+      smtpUsername: "${SMTP_USER}"
+      smtpPassword: "${SMTP_PASSWORD}"
+      useSsl: true
+    defaultContentType: text/html
+
+jobs:
+  - script: >
+      pipelineJob('calculator-devops') {
+        description('Build, test, containerise, push and deploy the Calculator REST API.')
+        properties {
+          githubProjectUrl('https://github.com/Paradox-73/Calculator_REST_API')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('https://github.com/Paradox-73/Calculator_REST_API.git') }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }
