@@ -245,155 +245,84 @@ The stack has 3 containers: 2 API replicas and 1 Nginx proxy.
 
 ---
 
-### Part D — Set up Jenkins
+### Part D — Run Jenkins
 
-Jenkins runs on port 8080 on this machine.
+The folder `jenkins/` holds a ready Jenkins setup. It runs Jenkins in a
+container and configures everything from code (Jenkins Configuration as Code,
+`jenkins/casc.yaml`): the admin user, the plugins, the `JDK21` and `Maven3`
+tools, the Docker Hub credential, the Gmail settings and the
+`calculator-devops` pipeline job.
 
-#### D.1 Install the plugins
+1. Copy the secrets template and fill it in. `jenkins/.env` is gitignored.
 
-Open **Manage Jenkins > Plugins > Available plugins**. Install these:
+   ```bash
+   cp jenkins/.env.example jenkins/.env
+   ```
 
-- Pipeline
-- Git
-- GitHub
-- Docker Pipeline
-- JUnit
-- Email Extension
-- Credentials Binding
+   | Variable | Value |
+   |---|---|
+   | `JENKINS_ADMIN_PASSWORD` | any password for the Jenkins login |
+   | `DOCKERHUB_TOKEN` | Docker Hub **Account settings > Personal access tokens**, read & write |
+   | `SMTP_USER` | your Gmail address |
+   | `SMTP_PASSWORD` | a Google app password: <https://myaccount.google.com/apppasswords> |
 
-Restart Jenkins after the installation.
+2. Start Jenkins.
 
-#### D.2 Give Jenkins access to Docker and Maven
+   ```bash
+   docker compose -f jenkins/docker-compose.yml up -d --build jenkins
+   ```
 
-The Jenkins agent runs the `docker` and `mvn` commands. Test the access
-from the account that runs Jenkins:
+3. Open <http://localhost:8080> and log in as `admin`.
+4. Open the job `calculator-devops` and click **Build Now**. The first run
+   registers the triggers.
 
-```bash
-docker ps
-mvn -v
-```
-
-If Jenkins runs in WSL, open **Docker Desktop > Settings > Resources >
-WSL Integration**. Enable the integration for your WSL distribution.
-
-#### D.3 Configure the tools
-
-Open **Manage Jenkins > Tools**.
-
-1. Add a **JDK** installation. Set the name to `JDK21`.
-2. Add a **Maven** installation. Set the name to `Maven3`.
-
-The `tools` block of the `Jenkinsfile` uses these two names. The names must
-match exactly.
-
-#### D.4 Add the Docker Hub credentials
-
-1. Create an access token in Docker Hub:
-   **Account Settings > Personal access tokens > Generate new token**.
-2. Open **Manage Jenkins > Credentials > System > Global credentials >
-   Add Credentials**.
-3. Select the kind **Username with password**.
-4. Set the username to your Docker Hub account name.
-5. Set the password to the access token.
-6. Set the **ID** to `dockerhub-credentials`. The `Jenkinsfile` uses this ID.
-
-#### D.5 Configure the email notification
-
-Open **Manage Jenkins > System**. Find the section
-**Extended E-mail Notification** and set these values for Gmail:
-
-| Field | Value |
-|---|---|
-| SMTP server | `smtp.gmail.com` |
-| SMTP port | `465` |
-| Use SSL | yes |
-| Credentials | your Gmail address and a Google app password |
-| Default Content Type | HTML |
-
-Set the same address in **E-mail Notification** and in the field
-**System Admin e-mail address**. Send a test email.
-
-> Use a Google **app password**, not your normal password.
-> Create one at <https://myaccount.google.com/apppasswords>.
-
-#### D.6 Edit the Jenkinsfile
-
-Open the `Jenkinsfile` and change two values in the `environment` block:
-
-```groovy
-DOCKER_NAMESPACE = 'kanavbhardwaj'              // your Docker Hub account
-NOTIFY_EMAIL     = 'kanav.bhardwaj@iiitb.ac.in' // your email address
-```
-
-Commit the change.
-
-#### D.7 Create the pipeline job
-
-1. Select **New Item**. Give the name `calculator-devops`.
-2. Select **Pipeline**. Click OK.
-3. In the **Pipeline** section, select **Pipeline script from SCM**.
-4. Select **Git**. Give your GitHub repository URL.
-5. Set the branch to `*/main`.
-6. Set the **Script Path** to `Jenkinsfile`.
-7. Save.
-
-#### D.8 Run the pipeline
-
-Click **Build Now**. The first run registers the triggers.
-Jenkins runs these stages:
+The Jenkins container runs `docker` through the host's Docker socket, so the
+images and the deployed stack live in the host's Docker. The pipeline reaches
+the deployed stack at `host.docker.internal:8081`.
 
 | Stage | Action |
 |---|---|
 | Checkout | Pull the latest commit from GitHub |
 | Build | Run `mvn clean package -DskipTests`, then archive the JAR |
-| Test | Run `mvn test`, publish the JUnit results, fail the build on a test failure |
+| Test | Run `mvn test`, publish the JUnit results, fail on a test failure or on coverage below 85% |
 | Docker Build | Build the image, tag it with the build number and with `latest` |
 | Push | Log in with the Jenkins credentials, push both tags to Docker Hub |
-| Deploy | Run `docker compose up -d --remove-orphans` |
-| Verify Health | Poll `/actuator/health`, then run a smoke test through the proxy |
+| Deploy | Build the proxy image, run `docker compose up -d --remove-orphans` |
+| Verify Health | Poll `/actuator/health`, then check that `2 + 3` returns `5.0` through the proxy |
 
-After a green run, open `http://localhost:8081/api/v1/add?a=2&b=3`.
-Check your inbox for the notification email.
+A failed Deploy or Verify Health stage redeploys the last green build.
+Every result (success, failure, unstable) sends an email.
 
 ---
 
 ### Part E — Connect the automatic trigger
 
-The `Jenkinsfile` declares two triggers. The webhook is the preferred method.
-Polling is the fallback method, and it needs no public address.
+The `Jenkinsfile` declares two triggers: the GitHub webhook (preferred) and
+`pollSCM('H/5 * * * *')`, a check every 5 minutes that needs no public address.
 
-#### E.1 The webhook (preferred)
+#### E.1 The webhook
 
-GitHub must reach your Jenkins. A local Jenkins needs a public address.
-Use ngrok:
+GitHub must reach Jenkins. The `tunnel` service in `jenkins/docker-compose.yml`
+runs a Cloudflare quick tunnel, which gives Jenkins a temporary public HTTPS
+address. The address changes on every start, so update the webhook after each
+start:
 
 ```bash
-ngrok http 8080
+docker compose -f jenkins/docker-compose.yml up -d tunnel
+sh jenkins/update-webhook.sh
 ```
 
-Ngrok prints a public URL, for example `https://abc123.ngrok-free.app`.
+The script reads the tunnel address and creates or updates the GitHub webhook
+`<address>/github-webhook/` with the GitHub CLI.
 
-1. Open your GitHub repository. Select **Settings > Webhooks > Add webhook**.
-2. Set the **Payload URL** to `https://abc123.ngrok-free.app/github-webhook/`.
-   The final `/` is necessary.
-3. Set the **Content type** to `application/json`.
-4. Select the event **Just the push event**.
-5. Click **Add webhook**. GitHub sends a test call. A green tick means success.
-
-#### E.2 Polling (fallback)
-
-The pipeline also declares `pollSCM('H/5 * * * *')`. Jenkins then checks the
-repository every 5 minutes. This method needs no public address.
-
-#### E.3 Test the automatic trigger
+#### E.2 Test the automatic trigger
 
 ```bash
-git commit --allow-empty -m "test: trigger the pipeline"
+git commit --allow-empty -m "Trigger the pipeline"
 git push
 ```
 
-Jenkins must start a new build without a manual click.
-This is the live demo for Class 17.
+Jenkins starts a new build without a manual click.
 
 ---
 
@@ -404,7 +333,7 @@ git init
 git add .
 git commit -m "feat: add the Spring Boot calculator API"
 git branch -M main
-git remote add origin https://github.com/<your-user>/calculator-devops.git
+git remote add origin https://github.com/Paradox-73/Calculator_REST_API.git
 git push -u origin main
 ```
 
@@ -431,10 +360,9 @@ git push -u origin feature/docker-compose
 | Port 8080 gives a Jenkins login page | Jenkins uses port 8080 | Use port 8081 for the stack. |
 | `bind: address already in use` | Another program uses port 8081 | Set `HOST_PORT` to a free port in `.env`. |
 | The container stays `unhealthy` | The application needs more start time | Increase `start_period` in `docker-compose.yml`. |
-| Jenkins reports `docker: not found` | The agent has no Docker access | See step D.2. |
-| Jenkins reports `Tool 'Maven3' not found` | The tool name is different | See step D.3. The names must match. |
-| The email does not arrive | The SMTP configuration is wrong | See step D.5. Use a Google app password. |
-| The webhook shows a red cross | GitHub cannot reach Jenkins | Check the ngrok URL. Keep ngrok running. |
+| Push fails with `password is empty` | `DOCKERHUB_TOKEN` is empty | Fill `jenkins/.env`, then `docker compose -f jenkins/docker-compose.yml up -d jenkins`. |
+| The email does not arrive | The SMTP values are wrong | Use a Google app password in `jenkins/.env`, not your normal password. |
+| The webhook shows a red cross | The tunnel address changed | Run `sh jenkins/update-webhook.sh`. |
 | The first build is slow | Maven downloads the dependencies | This is normal. The next build is faster. |
 
 ---
@@ -552,6 +480,10 @@ and `bat` on a Windows agent. The same pipeline therefore runs on both.
 ├── .dockerignore
 ├── docker-compose.yml                    # API replicas + proxy
 ├── Jenkinsfile                           # declarative CI/CD pipeline
+├── jenkins/                              # Jenkins in Docker, configured as code
+│   ├── Dockerfile, plugins.txt, casc.yaml
+│   ├── docker-compose.yml                # Jenkins + webhook tunnel
+│   └── update-webhook.sh
 ├── .env.example                          # example configuration
 ├── .gitignore
 └── README.md
