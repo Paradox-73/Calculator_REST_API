@@ -14,6 +14,26 @@ def runCmd(String command) {
     }
 }
 
+/**
+ * Rolling update: replaces one API replica, waits until it is healthy, then
+ * replaces the other. Nginx keeps sending traffic to the healthy replica, so
+ * the running deployment never goes down. Running it again with the same tag
+ * changes nothing.
+ */
+def deploy(String tag) {
+    withEnv(["IMAGE_NAME=${env.IMAGE_NAME}", "IMAGE_TAG=${tag}", "HOST_PORT=${env.HOST_PORT}"]) {
+        // The proxy image holds nginx.conf, so rebuild it first.
+        runCmd 'docker compose build nginx'
+        runCmd 'docker compose up -d --wait calculator-a'
+        // Nginx needs a few seconds to resolve the new replica's address.
+        // Without this pause both replicas can be unreachable at once.
+        sleep time: 10, unit: 'SECONDS'
+        runCmd 'docker compose up -d --wait calculator-b'
+        runCmd 'docker compose up -d --wait --remove-orphans'
+        runCmd 'docker compose ps'
+    }
+}
+
 /** Redeploys the image of the last green build after a failed deploy. */
 def rollback() {
     def lastGood = currentBuild.previousSuccessfulBuild?.number
@@ -21,10 +41,8 @@ def rollback() {
         echo 'No earlier successful build exists. Nothing to roll back to.'
         return
     }
-    echo "Rolling back to ${IMAGE_NAME}:${lastGood}"
-    withEnv(["IMAGE_NAME=${IMAGE_NAME}", "IMAGE_TAG=${lastGood}", "HOST_PORT=${HOST_PORT}"]) {
-        runCmd 'docker compose up -d --remove-orphans'
-    }
+    echo "Rolling back to ${env.IMAGE_NAME}:${lastGood}"
+    deploy("${lastGood}")
 }
 
 pipeline {
@@ -142,15 +160,8 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                echo "Deploying ${IMAGE_NAME}:${IMAGE_TAG} with Docker Compose."
-                withEnv(["IMAGE_NAME=${IMAGE_NAME}", "IMAGE_TAG=${IMAGE_TAG}", "HOST_PORT=${HOST_PORT}"]) {
-                    // The proxy image holds nginx.conf, so rebuild it first.
-                    runCmd 'docker compose build nginx'
-                    // "up -d" replaces only the changed containers. A re-run
-                    // of the same build does not break the running stack.
-                    runCmd 'docker compose up -d --remove-orphans'
-                    runCmd 'docker compose ps'
-                }
+                echo "Rolling update to ${IMAGE_NAME}:${IMAGE_TAG} with Docker Compose."
+                script { deploy(IMAGE_TAG) }
             }
             post {
                 failure {
