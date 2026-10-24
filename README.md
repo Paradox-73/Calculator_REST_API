@@ -504,6 +504,7 @@ and `bat` on a Windows agent. The same pipeline therefore runs on both.
 A local run confirmed these results:
 
 - `mvn clean package` — 38 tests pass, 0 failures, and Maven builds the JAR.
+- JaCoCo coverage: 90% of instructions, 100% of branches. The 85% gate passes.
 - `docker build` — the multi-stage image builds and starts.
 - `docker compose up -d` — 2 API replicas and 1 proxy reach a healthy state.
 - The four operations answer through the proxy on port 8081.
