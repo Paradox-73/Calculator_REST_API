@@ -516,6 +516,11 @@ A local run confirmed these results:
 - The divide-by-zero request, the absent parameter, and the non-numeric
   parameter each return HTTP 400 with the structured error body.
 - Nginx sends the requests to both replicas.
+- Jenkins build #7: all 7 stages green in 1 min 16 s, image pushed to Docker
+  Hub, success email sent. A merged pull request starts a build within about
+  10 s through the webhook.
+- A redeploy (build #5) kept the API up: 146 of 146 requests returned 200.
+- A deliberately broken smoke test (build #6) rolled back to build #5.
 - A second `docker compose up -d` recreated only the changed container.
   The deployment stayed available.
 
@@ -523,15 +528,12 @@ A local run confirmed these results:
 
 ## 11. Submission checklist
 
-- [ ] The GitHub repository holds the code, the `Jenkinsfile`, the
+- [x] The GitHub repository holds the code, the `Jenkinsfile`, the
       `Dockerfile`, and the `docker-compose.yml`.
-- [ ] The commit history shows progressive work, one feature branch, and
-      one merged pull request.
-- [ ] The Docker Hub repository is public. Note the image URL.
-- [ ] Screenshot: a green Jenkins pipeline run.
-- [ ] Screenshot: the email notification.
-- [ ] Screenshot: `docker ps` with the running containers.
-- [ ] Screenshot: the sample API responses.
-- [ ] A 2-3 page PDF report: the architecture diagram of section 1, a
-      description of each stage, and the challenges.
+- [x] Progressive commit history, four feature/fix branches, four merged pull requests.
+- [x] Public Docker Hub image: <https://hub.docker.com/r/paradox73/calculator-app>.
+- [x] Screenshots in `docs/screenshots/`: green pipeline, test report, `docker ps`,
+      API responses, Docker Hub tags, pull requests, commit history.
+- [ ] Screenshot of the notification email (`docs/screenshots/email.png`).
+- [x] Report: `docs/report.pdf` (architecture diagram, stages, challenges, screenshots).
 - [ ] The live demo: push a commit and show the automatic deployment.
