@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ---------- Stage 1: build the executable JAR ----------
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Base images are pinned to a digest, so the same commit always builds
+# from the same bytes. The tag stays in front for readability.
+FROM maven:3.9-eclipse-temurin-21@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320 AS build
 
 WORKDIR /build
 
@@ -14,7 +16,7 @@ COPY src ./src
 RUN mvn -B clean package -DskipTests
 
 # ---------- Stage 2: minimal runtime ----------
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:21-jre-alpine@sha256:b48e02e0ea88d7bfb305335df94923bdef394905f4147dccd52e873cf17b1088 AS runtime
 
 # Create a non-root user. The application never runs as root.
 RUN addgroup -S spring && adduser -S -G spring spring

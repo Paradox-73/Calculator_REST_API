@@ -160,16 +160,16 @@ Open a terminal in the project folder.
 
 ### Part B — Run one container with Docker
 
-1. Build the image. Replace `<user>` with your Docker Hub account name.
+1. Build the image.
 
    ```bash
-   docker build -t <user>/calculator-devops:1.0.0 .
+   docker build -t paradox73/calculator-app:1.0.0 .
    ```
 
 2. Start the container. The host port is 8081, because Jenkins uses 8080.
 
    ```bash
-   docker run -d -p 8081:8080 --name calculator <user>/calculator-devops:1.0.0
+   docker run -d -p 8081:8080 --name calculator paradox73/calculator-app:1.0.0
    ```
 
 3. Test the container.
@@ -456,6 +456,8 @@ Best practices in the file:
 - `EXPOSE 8080` declares the port.
 - `HEALTHCHECK` calls the Actuator health endpoint.
 - `.dockerignore` keeps the build context small.
+- Both base images are pinned to a `sha256` digest. The same commit therefore
+  always builds from the same base bytes.
 
 ---
 
@@ -468,6 +470,12 @@ Best practices in the file:
 | `calculator` | The Spring Boot API, 2 replicas | internal 8080 |
 | `nginx` | The reverse proxy and load balancer | host 8081 |
 
+The `nginx` image is built from `nginx/Dockerfile`, which copies
+`nginx/nginx.conf` into the image. No host file is mounted, so the stack also
+deploys when Jenkins runs inside a container. Nginx keeps both replicas in one
+`upstream` group and re-reads their addresses from Docker DNS (`resolve`), so
+it balances the load and retries a failed request on the other replica.
+
 The file also defines a health check for each service, the restart policy
 `unless-stopped`, environment variables, and a memory limit.
 Nginx starts only after the API reports a healthy state.
@@ -477,7 +485,7 @@ Copy `.env.example` to `.env` to change them.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `IMAGE_NAME` | `kanavbhardwaj/calculator-devops` | The image repository |
+| `IMAGE_NAME` | `paradox73/calculator-app` | The image repository |
 | `IMAGE_TAG` | `latest` | The image tag, the Jenkins build number |
 | `HOST_PORT` | `8081` | The host port of the proxy |
 
@@ -500,6 +508,24 @@ Jenkins masks the values in the console log. The pipeline calls
 - Each build tags the image with a unique build number. A rollback to an older
   tag is therefore possible.
 
+### Rollback
+
+A failed **Deploy** or **Verify Health** stage redeploys the image of the last
+green build (`currentBuild.previousSuccessfulBuild`). A bad build therefore
+never stays live. The smoke test checks the response body: `2 + 3` must return
+`"result":5.0`, not only an HTTP 200.
+
+### Coverage gate
+
+`mvn test` runs `jacoco:check`. The build fails when instruction coverage drops
+below 85%. The current coverage is 90% of instructions and 100% of branches.
+
+### Actuator exposure
+
+Only `health` and `info` are exposed. The health endpoint shows the `UP`/`DOWN`
+status to anonymous callers and hides disk and other details
+(`show-details: when-authorized`).
+
 ### A Windows Jenkins agent
 
 The `runCmd` helper function in the `Jenkinsfile` calls `sh` on a Linux agent
@@ -519,6 +545,7 @@ and `bat` on a Windows agent. The same pipeline therefore runs on both.
 │   └── exception/                        # custom exceptions, error handler
 ├── src/main/resources/application.yml
 ├── src/test/java/com/spe/calculator/     # 38 JUnit 5 and MockMvc tests
+├── nginx/Dockerfile                      # proxy image with the config baked in
 ├── nginx/nginx.conf                      # reverse proxy configuration
 ├── pom.xml                               # Maven build
 ├── Dockerfile                            # multi-stage image build

@@ -4,7 +4,7 @@ services:
 
   # The Spring Boot API. Compose starts two replicas of it.
   calculator:
-    image: ${IMAGE_NAME:-kanavbhardwaj/calculator-devops}:${IMAGE_TAG:-latest}
+    image: ${IMAGE_NAME:-paradox73/calculator-app}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,13 +32,13 @@ services:
 
   # The reverse proxy. It is the only entry point from the host.
   nginx:
-    image: nginx:1.27-alpine
+    image: calculator-nginx:latest
+    build:
+      context: ./nginx
     ports:
       # Port 8080 on the host normally belongs to Jenkins.
       # The stack therefore uses port 8081.
       - "${HOST_PORT:-8081}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       calculator:
         condition: service_healthy
