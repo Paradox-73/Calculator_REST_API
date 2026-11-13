@@ -537,3 +537,4 @@ A local run confirmed these results:
 - [x] Screenshot of the notification email (`docs/screenshots/email.png`).
 - [x] Report: `docs/report.pdf` (architecture diagram, stages, challenges, screenshots).
 - [ ] The live demo: push a commit and show the automatic deployment.
+"viva demo run 1" 
