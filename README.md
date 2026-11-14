@@ -538,3 +538,4 @@ A local run confirmed these results:
 - [x] Report: `docs/report.pdf` (architecture diagram, stages, challenges, screenshots).
 - [ ] The live demo: push a commit and show the automatic deployment.
 "viva demo run 1" 
+"viva demo run 1" 
